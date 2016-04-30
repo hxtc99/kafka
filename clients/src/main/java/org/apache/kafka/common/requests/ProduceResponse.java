@@ -17,6 +17,7 @@ import org.apache.kafka.common.protocol.ApiKeys;
 import org.apache.kafka.common.protocol.ProtoUtils;
 import org.apache.kafka.common.protocol.types.Schema;
 import org.apache.kafka.common.protocol.types.Struct;
+import org.apache.kafka.common.record.Record;
 import org.apache.kafka.common.utils.CollectionUtils;
 
 import java.nio.ByteBuffer;
@@ -107,7 +108,8 @@ public class ProduceResponse extends AbstractRequestResponse {
                 int partition = partRespStruct.getInt(PARTITION_KEY_NAME);
                 short errorCode = partRespStruct.getShort(ERROR_CODE_KEY_NAME);
                 long offset = partRespStruct.getLong(BASE_OFFSET_KEY_NAME);
-                long timestamp = partRespStruct.getLong(TIMESTAMP_KEY_NAME);
+                //long timestamp = partRespStruct.getLong(TIMESTAMP_KEY_NAME);
+                long timestamp = Record.NO_TIMESTAMP;
                 TopicPartition tp = new TopicPartition(topic, partition);
                 responses.put(tp, new PartitionResponse(errorCode, offset, timestamp));
             }
