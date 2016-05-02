@@ -37,7 +37,7 @@ public final class Record {
     public static final int ATTRIBUTES_OFFSET = MAGIC_OFFSET + MAGIC_LENGTH;
     public static final int ATTRIBUTE_LENGTH = 1;
     public static final int TIMESTAMP_OFFSET = ATTRIBUTES_OFFSET + ATTRIBUTE_LENGTH;
-    public static final int TIMESTAMP_LENGTH = 8;
+    public static final int TIMESTAMP_LENGTH = 0;
     public static final int KEY_SIZE_OFFSET_V0 = ATTRIBUTES_OFFSET + ATTRIBUTE_LENGTH;
     public static final int KEY_SIZE_OFFSET_V1 = TIMESTAMP_OFFSET + TIMESTAMP_LENGTH;
     public static final int KEY_SIZE_LENGTH = 4;
@@ -158,7 +158,7 @@ public final class Record {
         // write attributes
         compressor.putByte(attributes);
         // write timestamp
-        compressor.putLong(timestamp);
+        // compressor.putLong(timestamp);
         // write the key
         if (key == null) {
             compressor.putInt(-1);
@@ -214,7 +214,7 @@ public final class Record {
         if (type.id > 0)
             attributes = (byte) (attributes | (COMPRESSION_CODEC_MASK & type.id));
         crc.update(attributes);
-        crc.updateLong(timestamp);
+        // crc.updateLong(timestamp);
         // update for the key
         if (key == null) {
             crc.updateInt(-1);
