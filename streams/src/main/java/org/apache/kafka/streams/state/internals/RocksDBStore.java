@@ -54,6 +54,8 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
     private static final int DEFAULT_UNENCODED_CACHE_SIZE = 1000;
     private static final CompressionType COMPRESSION_TYPE = CompressionType.NO_COMPRESSION;
     private static final CompactionStyle COMPACTION_STYLE = CompactionStyle.UNIVERSAL;
+    private static final long TARGET_FILE_SIZE_BASE = 64 * 1024 * 1024L;
+    private static final long MAX_BYTES_FOR_LEVEL_BASE = 512 * 1024 * 1024L;
     private static final long WRITE_BUFFER_SIZE = 32 * 1024 * 1024L;
     private static final long BLOCK_CACHE_SIZE = 100 * 1024 * 1024L;
     private static final long BLOCK_SIZE = 4096L;
@@ -112,6 +114,8 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
 
         options = new Options();
         options.setTableFormatConfig(tableConfig);
+        options.setMaxBytesForLevelBase(MAX_BYTES_FOR_LEVEL_BASE);
+        options.setTargetFileSizeBase(TARGET_FILE_SIZE_BASE);
         options.setWriteBufferSize(WRITE_BUFFER_SIZE);
         options.setCompressionType(COMPRESSION_TYPE);
         options.setCompactionStyle(COMPACTION_STYLE);
