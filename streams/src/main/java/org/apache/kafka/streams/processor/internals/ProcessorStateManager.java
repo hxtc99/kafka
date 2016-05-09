@@ -21,6 +21,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.StateRestoreCallback;
 import org.apache.kafka.streams.processor.StateStore;
@@ -98,9 +99,6 @@ public class ProcessorStateManager {
         // load the checkpoint information
         OffsetCheckpoint checkpoint = new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
         this.checkpointedOffsets = new HashMap<>(checkpoint.read());
-
-        // delete the checkpoint file after finish loading its stored offsets
-        checkpoint.delete();
     }
 
     private static void createStateDirectory(File stateDir) throws IOException {
@@ -307,6 +305,10 @@ public class ProcessorStateManager {
         offsetLimits.put(partition, limit);
     }
 
+    public Map<TopicPartition,Long> offsetLimits() {
+        return offsetLimits;
+    }
+
     private long offsetLimit(TopicPartition partition) {
         Long limit = offsetLimits.get(partition);
         return limit != null ? limit : Long.MAX_VALUE;
@@ -325,6 +327,52 @@ public class ProcessorStateManager {
     }
 
     /**
+     * @throws IOException if any error happens when persisting offsets
+     */
+    public void persistOffsets(Map<TopicPartition, Long> ackedOffsets) {
+        if (!stores.isEmpty()) {
+            log.debug("Persisting offsets");
+
+            Map<TopicPartition, Long> checkpointOffsets = new HashMap<>();
+            for (String storeName : stores.keySet()) {
+                TopicPartition part;
+                if (loggingEnabled.contains(storeName))
+                    part =
+                        new TopicPartition(storeChangelogTopic(applicationId, storeName),
+                            getPartition(storeName));
+                else
+                    part = new TopicPartition(storeName, getPartition(storeName));
+
+                // only checkpoint the offset to the offsets file if it is persistent;
+                if (stores.get(storeName).persistent()) {
+                    Long offset = ackedOffsets.get(part);
+
+                    if (offset != null) {
+                        // store the last offset + 1 (the log position after restoration)
+                        checkpointOffsets.put(part, offset + 1);
+                    } else {
+                        // if no record was produced. we need to check the restored offset.
+                        offset = restoredOffsets.get(part);
+                        if (offset != null)
+                            checkpointOffsets.put(part, offset);
+                    }
+                }
+            }
+
+            try {
+                // write the checkpoint file before closing, to indicate clean shutdown
+                OffsetCheckpoint
+                    checkpoint =
+                    new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
+                checkpoint.write(checkpointOffsets);
+            } catch (IOException ex) {
+                throw new ProcessorStateException("Error while persisting offsets", ex);
+            }
+        }
+    }
+
+
+    /**
      * @throws IOException if any error happens when flushing or closing the state stores
      */
     public void close(Map<TopicPartition, Long> ackedOffsets) throws IOException {
@@ -336,34 +384,7 @@ public class ProcessorStateManager {
                     entry.getValue().flush();
                     entry.getValue().close();
                 }
-
-                Map<TopicPartition, Long> checkpointOffsets = new HashMap<>();
-                for (String storeName : stores.keySet()) {
-                    TopicPartition part;
-                    if (loggingEnabled.contains(storeName))
-                        part = new TopicPartition(storeChangelogTopic(applicationId, storeName), getPartition(storeName));
-                    else
-                        part = new TopicPartition(storeName, getPartition(storeName));
-
-                    // only checkpoint the offset to the offsets file if it is persistent;
-                    if (stores.get(storeName).persistent()) {
-                        Long offset = ackedOffsets.get(part);
-
-                        if (offset != null) {
-                            // store the last offset + 1 (the log position after restoration)
-                            checkpointOffsets.put(part, offset + 1);
-                        } else {
-                            // if no record was produced. we need to check the restored offset.
-                            offset = restoredOffsets.get(part);
-                            if (offset != null)
-                                checkpointOffsets.put(part, offset);
-                        }
-                    }
-                }
-
-                // write the checkpoint file before closing, to indicate clean shutdown
-                OffsetCheckpoint checkpoint = new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
-                checkpoint.write(checkpointOffsets);
+                persistOffsets(ackedOffsets);
             }
         } finally {
             // release the state directory directoryLock

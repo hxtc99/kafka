@@ -86,8 +86,15 @@ public class StandbyTask extends AbstractTask {
 
     public void commit() {
         stateMgr.flush();
+        stateMgr.persistOffsets(recordCollectorOffsets());
 
         // reinitialize offset limits
         initializeOffsetLimits();
     }
+
+    protected Map<TopicPartition, Long> recordCollectorOffsets() {
+        return stateMgr.offsetLimits();
+    }
+
+
 }

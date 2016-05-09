@@ -249,6 +249,8 @@ public class StreamTask extends AbstractTask implements Punctuator {
         // 2) flush produced records in the downstream and change logs of local states
         recordCollector.flush();
 
+        stateMgr.persistOffsets(recordCollectorOffsets());
+
         // 3) commit consumed offsets if it is dirty already
         if (commitOffsetNeeded) {
             Map<TopicPartition, OffsetAndMetadata> consumedOffsetsAndMetadata = new HashMap<>(consumedOffsets.size());

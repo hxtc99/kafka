@@ -86,6 +86,12 @@ public class OffsetCheckpoint {
                 writer.close();
             }
 
+            // Save a backup file in case the final rename failed;
+            if (file.exists()) {
+                File backup = new File(file.getAbsolutePath() + ".backup");
+                backup.delete();
+                Utils.atomicMoveWithFallback(file.toPath(), backup.toPath());
+            }
             Utils.atomicMoveWithFallback(temp.toPath(), file.toPath());
         }
     }
