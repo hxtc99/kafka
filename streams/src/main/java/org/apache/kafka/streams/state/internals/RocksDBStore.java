@@ -62,6 +62,7 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
     private static final int TTL_SECONDS = TTL_NOT_USED;
     private static final int MAX_WRITE_BUFFERS = 5;
     private static final int MIN_WRITE_BUFFER_NUMBER_TO_MERGE = 2;
+    private static final int MAX_BACKGROUND_COMPACTIONS = 4;
     private static final String DB_FILE_DIR = "rocksdb";
 
     private final String name;
@@ -86,6 +87,8 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
     private StoreChangeLogger<byte[], byte[]> changeLogger;
     private StoreChangeLogger.ValueGetter<byte[], byte[]> getter;
 
+    public static List<RocksDBStore> stores = new ArrayList<>();
+
     public KeyValueStore<K, V> enableLogging() {
         loggingEnabled = true;
 
@@ -103,6 +106,7 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
     }
 
     public RocksDBStore(String name, String parentDir, Serde<K> keySerde, Serde<V> valueSerde) {
+        stores.add(this);
         this.name = name;
         this.parentDir = parentDir;
         this.keySerde = keySerde;
@@ -114,6 +118,7 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
         tableConfig.setBlockSize(BLOCK_SIZE);
 
         options = new Options();
+        options.createStatistics();
         options.setTableFormatConfig(tableConfig);
         options.setMaxBytesForLevelBase(MAX_BYTES_FOR_LEVEL_BASE);
         options.setTargetFileSizeBase(TARGET_FILE_SIZE_BASE);
@@ -122,6 +127,7 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
         options.setCompactionStyle(COMPACTION_STYLE);
         options.setMaxWriteBufferNumber(MAX_WRITE_BUFFERS);
         options.setMinWriteBufferNumberToMerge(MIN_WRITE_BUFFER_NUMBER_TO_MERGE);
+        options.setMaxBackgroundCompactions(MAX_BACKGROUND_COMPACTIONS);
         options.setCreateIfMissing(true);
         options.setErrorIfExists(false);
 

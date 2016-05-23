@@ -52,6 +52,9 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
 import java.nio.channels.FileLock;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -122,6 +125,7 @@ public class StreamThread extends Thread {
     final ConsumerRebalanceListener rebalanceListener = new ConsumerRebalanceListener() {
         @Override
         public void onPartitionsAssigned(Collection<TopicPartition> assignment) {
+            log.info("Thread {}, assigned: {}", Thread.currentThread().getName(), assignment);
             try {
                 addStreamTasks(assignment);
                 addStandbyTasks();
@@ -134,6 +138,7 @@ public class StreamThread extends Thread {
 
         @Override
         public void onPartitionsRevoked(Collection<TopicPartition> assignment) {
+            log.info("Thread {}, revoked: {}", Thread.currentThread().getName(), assignment);
             try {
                 commitAll();
                 lastClean = Long.MAX_VALUE; // stop the cleaning cycle until partitions are assigned
@@ -370,6 +375,7 @@ public class StreamThread extends Thread {
                 requiresPoll = true;
             }
             maybeCommit();
+
             maybeUpdateStandbyTasks();
 
             maybeClean();
@@ -759,7 +765,12 @@ public class StreamThread extends Thread {
 
         @Override
         public void recordLatency(Sensor sensor, long startNs, long endNs) {
-            sensor.record((endNs - startNs) / 1000000, endNs);
+            if (endNs - startNs > 1000 * 5000000L ) {
+                log.warn("{}, long latency {} for sensor {}",
+                    Thread.currentThread().getName(),
+                    (endNs - startNs) / 1000 / 1000000L, sensor.name());
+            }
+            sensor.record((endNs - startNs) / 1000000, endNs / 1000000);
         }
 
         /**
