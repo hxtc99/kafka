@@ -19,6 +19,7 @@ package org.apache.kafka.streams.processor.internals;
 
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.streams.errors.ProcessorStateException;
@@ -67,6 +68,7 @@ public class ProcessorStateManager {
     private final Map<TopicPartition, Long> offsetLimits;
     private final boolean isStandby;
     private final Map<String, StateRestoreCallback> restoreCallbacks; // used for standby tasks, keyed by state topic name
+    private Consumer<byte[], byte[]> consumer;
 
     /**
      * @throws IOException if any error happens while creating or locking the state directory
@@ -99,6 +101,11 @@ public class ProcessorStateManager {
         // load the checkpoint information
         OffsetCheckpoint checkpoint = new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
         this.checkpointedOffsets = new HashMap<>(checkpoint.read());
+        this.restoredOffsets.putAll(checkpointedOffsets);
+    }
+
+    public void setConsumer(Consumer<byte[], byte[]> consumer) {
+        this.consumer = consumer;
     }
 
     private static void createStateDirectory(File stateDir) throws IOException {
@@ -228,14 +235,31 @@ public class ProcessorStateManager {
                 restoreConsumer.seekToBeginning(singleton(storePartition));
             }
 
+            log.info("restoreActiveState, resetHeartbeat.");
+            ((KafkaConsumer)consumer).resetHeartbeat();
+
             // restore its state from changelog records
             long limit = offsetLimit(storePartition);
+            log.info("limit for {} is: {}", storePartition, limit);
+            long time = System.currentTimeMillis();
             while (true) {
                 long offset = 0L;
                 for (ConsumerRecord<byte[], byte[]> record : restoreConsumer.poll(100).records(storePartition)) {
                     offset = record.offset();
                     if (offset >= limit) break;
                     stateRestoreCallback.restore(record.key(), record.value());
+                    restoredOffsets.put(storePartition, offset + 1);
+                }
+
+                if (System.currentTimeMillis() - time > 1000L) {
+                    log.info("restoreActiveState, Quick Poll Consumer to keep it active.");
+                    ((KafkaConsumer) consumer).quickPoll(true);
+                    if (((KafkaConsumer) consumer).needRejoin()) {
+                        log.info("Needs rejoin, quit");
+                        persistOffsets(restoredOffsets);
+                        throw new IllegalStateException("Consumer needs to rejoin group");
+                    }
+                    time = System.currentTimeMillis();
                 }
 
                 if (offset >= limit) {
@@ -285,10 +309,12 @@ public class ProcessorStateManager {
 
         long lastOffset = -1L;
         int count = 0;
+        long time = System.currentTimeMillis();
         for (ConsumerRecord<byte[], byte[]> record : records) {
             if (record.offset() < limit) {
                 restoreCallback.restore(record.key(), record.value());
                 lastOffset = record.offset();
+                restoredOffsets.put(storePartition, lastOffset + 1);
             } else {
                 if (remainingRecords == null)
                     remainingRecords = new ArrayList<>(records.size() - count);
@@ -296,6 +322,17 @@ public class ProcessorStateManager {
                 remainingRecords.add(record);
             }
             count++;
+            if (System.currentTimeMillis() - time > 1000L) {
+                log.info("updateStandby, Quick Poll Consumer to keep it active.");
+                ((KafkaConsumer) consumer).quickPoll(true);
+                if (((KafkaConsumer)consumer).needRejoin()){
+                    log.info("Needs rejoin, quit");
+                    persistOffsets(restoredOffsets);
+                    break;
+                }
+                time = System.currentTimeMillis();
+            }
+
         }
         // record the restored offset for its change log partition
         restoredOffsets.put(storePartition, lastOffset + 1);
@@ -348,6 +385,8 @@ public class ProcessorStateManager {
                 // only checkpoint the offset to the offsets file if it is persistent;
                 if (stores.get(storeName).persistent()) {
                     Long offset = ackedOffsets.get(part);
+                    log.debug("ackedOffset for part {} is {}, restored: {}",
+                        part, offset, restoredOffsets.get(part));
 
                     if (offset != null) {
                         // store the last offset + 1 (the log position after restoration)
@@ -373,6 +412,9 @@ public class ProcessorStateManager {
         }
     }
 
+    public Map<TopicPartition, Long> getRestoredOffsets() {
+        return restoredOffsets;
+    }
 
     /**
      * @throws IOException if any error happens when flushing or closing the state stores
@@ -380,9 +422,9 @@ public class ProcessorStateManager {
     public void close(Map<TopicPartition, Long> ackedOffsets) throws IOException {
         try {
             if (!stores.isEmpty()) {
-                log.debug("Closing stores.");
+                log.info("Closing stores.");
                 for (Map.Entry<String, StateStore> entry : stores.entrySet()) {
-                    log.debug("Closing storage engine {}", entry.getKey());
+                    log.info("Closing storage engine {}", entry.getKey());
                     entry.getValue().flush();
                     entry.getValue().close();
                 }

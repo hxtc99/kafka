@@ -249,12 +249,17 @@ public abstract class AbstractCoordinator implements Closeable {
         }
     }
 
+    public void resetHeartbeat() {
+        heartbeatTask.reset();
+    }
+
     private class HeartbeatTask implements DelayedTask {
 
         private boolean requestInFlight = false;
 
         public void reset() {
             // start or restart the heartbeat task to be executed at the next chance
+            log.debug("heartbeat reset, requestInFlight: {}", requestInFlight);
             long now = time.milliseconds();
             heartbeat.resetSessionTimeout(now);
             client.unschedule(this);
@@ -265,13 +270,17 @@ public abstract class AbstractCoordinator implements Closeable {
 
         @Override
         public void run(final long now) {
+            log.debug("run heartbeat task.");
             if (generation < 0 || needRejoin() || coordinatorUnknown()) {
+                log.debug("no reschedule, generation: {}, needsRejoin: {}, coordinatorUnknown: {}",
+                    generation, needRejoin(), coordinatorUnknown());
                 // no need to send the heartbeat we're not using auto-assignment or if we are
                 // awaiting a rebalance
                 return;
             }
 
             if (heartbeat.sessionTimeoutExpired(now)) {
+                log.debug("heartbean session timeout");
                 // we haven't received a successful heartbeat in one session interval
                 // so mark the coordinator dead
                 coordinatorDead();

@@ -126,6 +126,7 @@ public class StreamThread extends Thread {
         @Override
         public void onPartitionsAssigned(Collection<TopicPartition> assignment) {
             log.info("Thread {}, assigned: {}", Thread.currentThread().getName(), assignment);
+
             try {
                 addStreamTasks(assignment);
                 addStandbyTasks();
@@ -691,6 +692,7 @@ public class StreamThread extends Thread {
         for (Map.Entry<TopicPartition, Long> entry : checkpointedOffsets.entrySet()) {
             TopicPartition partition = entry.getKey();
             long offset = entry.getValue();
+            log.info("addStandBy, partition: {}, offset: {}", partition, offset);
             if (offset >= 0) {
                 restoreConsumer.seek(partition, offset);
             } else {

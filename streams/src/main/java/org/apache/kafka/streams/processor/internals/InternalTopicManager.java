@@ -49,6 +49,8 @@ public class InternalTopicManager {
     private static final String ZK_ENTITY_CONFIG_PATH = "/config/topics";
     // TODO: the following LogConfig dependency should be removed after KIP-4
     private static final String CLEANUP_POLICY_PROP = "cleanup.policy";
+    private static final String RETENTION_MS_PROP = "retention.ms";
+
     private static final String COMPACT = "compact";
 
     private final ZkClient zkClient;
@@ -155,7 +157,8 @@ public class InternalTopicManager {
 
             Map<Integer, List<Integer>> partitions = (Map<Integer, List<Integer>>) dataMap.get("partitions");
 
-            log.debug("Read partitions {} for topic {} from ZK in partition assignor.", partitions, topic);
+            log.debug("Read partitions {} for topic {} from ZK in partition assignor.", partitions,
+                topic);
 
             return partitions;
         } catch (IOException e) {
@@ -187,6 +190,11 @@ public class InternalTopicManager {
         // write out config first just like in AdminUtils.scala createOrUpdateTopicPartitionAssignmentPathInZK()
         if (compactTopic) {
             prop.put(CLEANUP_POLICY_PROP, COMPACT);
+        } else {
+            // retention one day + 6 hours
+            prop.put(RETENTION_MS_PROP, Long.toString(30 * 3600L * 1000L));
+        }
+
             try {
                 Map<String, Object> dataMap = new HashMap<>();
                 dataMap.put("version", 1);
@@ -196,7 +204,7 @@ public class InternalTopicManager {
             } catch (JsonProcessingException e) {
                 throw new StreamsException("Error while creating topic config in ZK for internal topic " + topic, e);
             }
-        }
+
 
         // try to write to ZK with open ACL
         try {

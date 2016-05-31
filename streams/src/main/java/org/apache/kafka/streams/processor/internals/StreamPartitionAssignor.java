@@ -381,8 +381,8 @@ public class StreamPartitionAssignor implements PartitionAssignor, Configurable 
 
         // if ZK is specified, validate the internal topics again
         prepareTopic(internalSourceTopicToTaskIds, false /* compactTopic */, false, true);
-        // change log topics should be compacted
-        prepareTopic(stateChangelogTopicToTaskIds, true /* compactTopic */, false, true);
+        // TODO: change log topics should be compacted
+        prepareTopic(stateChangelogTopicToTaskIds, false /* compactTopic */, false, true);
 
         return assignment;
     }

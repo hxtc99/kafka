@@ -885,12 +885,22 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         }
     }
 
-    /**
-     * Do one round of polling. In addition to checking for new data, this does any needed
-     * heart-beating, auto-commits, and offset updates.
-     * @param timeout The maximum time to block in the underlying poll
-     * @return The fetched records (may be empty)
-     */
+    public void resetHeartbeat() {
+        coordinator.resetHeartbeat();
+    }
+
+    public void quickPoll(boolean executeDelayedTasks) {
+        client.quickPoll(executeDelayedTasks);
+    }
+
+    public boolean needRejoin() {return coordinator.needRejoin();};
+
+        /**
+         * Do one round of polling. In addition to checking for new data, this does any needed
+         * heart-beating, auto-commits, and offset updates.
+         * @param timeout The maximum time to block in the underlying poll
+         * @return The fetched records (may be empty)
+         */
     private Map<TopicPartition, List<ConsumerRecord<K, V>>> pollOnce(long timeout) {
         // TODO: Sub-requests should take into account the poll timeout (KAFKA-1894)
         coordinator.ensureCoordinatorKnown();

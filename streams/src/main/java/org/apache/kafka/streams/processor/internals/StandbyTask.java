@@ -93,7 +93,7 @@ public class StandbyTask extends AbstractTask {
     }
 
     protected Map<TopicPartition, Long> recordCollectorOffsets() {
-        return stateMgr.offsetLimits();
+        return stateMgr.getRestoredOffsets();
     }
 
 
