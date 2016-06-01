@@ -133,7 +133,13 @@ public class StreamThread extends Thread {
                 lastClean = time.milliseconds(); // start the cleaning cycle
             } catch (Throwable t) {
                 rebalanceException = t;
-                throw t;
+                log.warn("Unexpected exception, removing all tasks", t);
+                try {
+                    removeStreamTasks();
+                    removeStandbyTasks();
+                } finally {
+                    throw t;
+                }
             }
         }
 
@@ -230,7 +236,8 @@ public class StreamThread extends Thread {
     private Consumer<byte[], byte[]> createConsumer() {
         String threadName = this.getName();
         log.info("Creating consumer client for stream thread [" + threadName + "]");
-        return new KafkaConsumer<>(config.getConsumerConfigs(this, this.applicationId, this.clientId + "-" + threadName),
+        return new KafkaConsumer<>(config.getConsumerConfigs(this, this.applicationId,
+            this.clientId + "-" + threadName),
                 new ByteArrayDeserializer(),
                 new ByteArrayDeserializer());
     }
@@ -333,8 +340,26 @@ public class StreamThread extends Thread {
                 ConsumerRecords<byte[], byte[]> records = consumer.poll(totalNumBuffered == 0 ? this.pollTimeMs : 0);
                 lastPoll = time.milliseconds();
 
-                if (rebalanceException != null)
+                int retries = 3;
+                long sleepTime = 1000L;
+                while (rebalanceException != null && retries > 0) {
+                    log.warn("Rebalance exception during the poll: {}", rebalanceException);
+                    rebalanceException = null;
+                    try {
+                        log.info("Sleep for {} before rejoin group", sleepTime);
+                        Thread.sleep(sleepTime);
+                    } catch (InterruptedException ex) {
+                        log.info("Interrupted: {}", ex);
+                        break;
+                    }
+                    ((KafkaConsumer)consumer).markNeedRejoin(true);
+                    records = consumer.poll(totalNumBuffered == 0 ? this.pollTimeMs : 0);
+                    sleepTime *= 2;
+                    retries--;
+                }
+                if (rebalanceException != null) {
                     throw new StreamsException("Failed to rebalance", rebalanceException);
+                }
 
                 if (!records.isEmpty()) {
                     for (TopicPartition partition : records.partitions()) {
@@ -672,6 +697,7 @@ public class StreamThread extends Thread {
         for (Map.Entry<TaskId, Set<TopicPartition>> entry : partitionAssignor.standbyTasks().entrySet()) {
             TaskId taskId = entry.getKey();
             Set<TopicPartition> partitions = entry.getValue();
+            log.info("addStanbyTask: {}, partitions: {}", taskId, partitions);
             StandbyTask task = createStandbyTask(taskId, partitions);
             if (task != null) {
                 standbyTasks.put(taskId, task);

@@ -93,10 +93,11 @@ public class ProcessorStateManager {
         createStateDirectory(baseDir);
 
         // try to acquire the exclusive lock on the state directory
-        directoryLock = lockStateDirectory(baseDir, 5);
+        directoryLock = lockStateDirectory(baseDir, 30 * 1000L);
         if (directoryLock == null) {
             throw new IOException("Failed to lock the state directory: " + baseDir.getCanonicalPath());
         }
+        log.info("Acquired file lock: {}", baseDir.getCanonicalPath());
 
         // load the checkpoint information
         OffsetCheckpoint checkpoint = new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
@@ -125,18 +126,21 @@ public class ProcessorStateManager {
         return lockStateDirectory(stateDir, 0);
     }
 
-    private static FileLock lockStateDirectory(File stateDir, int retry) throws IOException {
+    private static FileLock lockStateDirectory(File stateDir, long timeout) throws IOException {
         File lockFile = new File(stateDir, ProcessorStateManager.LOCK_FILE_NAME);
         FileChannel channel = new RandomAccessFile(lockFile, "rw").getChannel();
 
         FileLock lock = lockStateDirectory(channel);
-        while (lock == null && retry > 0) {
+        long time = System.currentTimeMillis();
+        long sleep = 100;
+        while (lock == null && System.currentTimeMillis() - time < timeout) {
             try {
-                Thread.sleep(200);
+                log.info("Waiting {} to acquire lock.", sleep);
+                Thread.sleep(sleep);
             } catch (Exception ex) {
                 // do nothing
             }
-            retry--;
+            sleep = sleep * 2;
             lock = lockStateDirectory(channel);
         }
         return lock;
@@ -254,12 +258,13 @@ public class ProcessorStateManager {
                 if (System.currentTimeMillis() - time > 1000L) {
                     log.info("restoreActiveState, Quick Poll Consumer to keep it active.");
                     ((KafkaConsumer) consumer).quickPoll(true);
+                    time = System.currentTimeMillis();
                     if (((KafkaConsumer) consumer).needRejoin()) {
                         log.info("Needs rejoin, quit");
+                        flush();
                         persistOffsets(restoredOffsets);
                         throw new IllegalStateException("Consumer needs to rejoin group");
                     }
-                    time = System.currentTimeMillis();
                 }
 
                 if (offset >= limit) {
@@ -269,6 +274,9 @@ public class ProcessorStateManager {
                 } else if (restoreConsumer.position(storePartition) > endOffset) {
                     // For a logging enabled changelog (no offset limit),
                     // the log end offset should not change while restoring since it is only written by this thread.
+                    log.warn("End offset moved, quite");
+                    flush();
+                    persistOffsets(restoredOffsets);
                     throw new IllegalStateException("Log end offset should not change while restoring");
                 }
             }
@@ -316,6 +324,7 @@ public class ProcessorStateManager {
                 lastOffset = record.offset();
                 restoredOffsets.put(storePartition, lastOffset + 1);
             } else {
+                log.info("record offset {} more than limit: {}", record.offset(), limit);
                 if (remainingRecords == null)
                     remainingRecords = new ArrayList<>(records.size() - count);
 
@@ -327,6 +336,7 @@ public class ProcessorStateManager {
                 ((KafkaConsumer) consumer).quickPoll(true);
                 if (((KafkaConsumer)consumer).needRejoin()){
                     log.info("Needs rejoin, quit");
+                    flush();
                     persistOffsets(restoredOffsets);
                     break;
                 }
@@ -432,6 +442,7 @@ public class ProcessorStateManager {
             }
         } finally {
             // release the state directory directoryLock
+            log.info("Release lock: {}", baseDir.getCanonicalPath());
             directoryLock.release();
         }
     }

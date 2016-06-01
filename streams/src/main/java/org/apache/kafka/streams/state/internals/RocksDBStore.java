@@ -38,6 +38,9 @@ import org.rocksdb.RocksIterator;
 import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,20 +51,24 @@ import java.util.Set;
 
 public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
 
+    private static final Logger log = LoggerFactory.getLogger(RocksDBStore.class);
+
+
     private static final int TTL_NOT_USED = -1;
 
     // TODO: these values should be configurable
     private static final int DEFAULT_UNENCODED_CACHE_SIZE = 1000;
     private static final CompressionType COMPRESSION_TYPE = CompressionType.SNAPPY_COMPRESSION;
     private static final CompactionStyle COMPACTION_STYLE = CompactionStyle.LEVEL;
-    private static final long TARGET_FILE_SIZE_BASE = 64 * 1024 * 1024L;
-    private static final long MAX_BYTES_FOR_LEVEL_BASE = 512 * 1024 * 1024L;
-    private static final long WRITE_BUFFER_SIZE = 128 * 1024 * 1024L;
-    private static final long BLOCK_CACHE_SIZE = 100 * 1024 * 1024L;
+    private static final long TARGET_FILE_SIZE_BASE = 64 * 1024 * 1024L; // L1 file size
+    private static final long MAX_BYTES_FOR_LEVEL_BASE = 1024 * 1024 * 1024L; // L1 Size
+    private static final long WRITE_BUFFER_SIZE = 64 * 1024 * 1024L; // memtable size
+    private static final int MIN_WRITE_BUFFER_NUMBER_TO_MERGE = 2; // # of memtable
+    private static final int LEVEL_ZERO_FILE_NUM_COMPACTION_TRIGGER = 8; // L0 size: 64 * 2 * 8
+    private static final int MAX_WRITE_BUFFERS = 6;
+    private static final long BLOCK_CACHE_SIZE = 1024 * 1024 * 1024L;
     private static final long BLOCK_SIZE = 4096L;
     private static final int TTL_SECONDS = TTL_NOT_USED;
-    private static final int MAX_WRITE_BUFFERS = 5;
-    private static final int MIN_WRITE_BUFFER_NUMBER_TO_MERGE = 2;
     private static final int MAX_BACKGROUND_COMPACTIONS = 4;
     private static final String DB_FILE_DIR = "rocksdb";
 
@@ -127,6 +134,7 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
         options.setCompactionStyle(COMPACTION_STYLE);
         options.setMaxWriteBufferNumber(MAX_WRITE_BUFFERS);
         options.setMinWriteBufferNumberToMerge(MIN_WRITE_BUFFER_NUMBER_TO_MERGE);
+        options.setLevelZeroFileNumCompactionTrigger(LEVEL_ZERO_FILE_NUM_COMPACTION_TRIGGER);
         options.setMaxBackgroundCompactions(MAX_BACKGROUND_COMPACTIONS);
         options.setCreateIfMissing(true);
         options.setErrorIfExists(false);
@@ -295,7 +303,11 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
             }
         } else {
             try {
+                long time = System.currentTimeMillis();
                 db.put(wOptions, rawKey, rawValue);
+                if (System.currentTimeMillis() - time > 60 * 1000L) {
+                    log.warn("Long put stats: {}", db.getProperty("rocksdb.stats"));
+                }
             } catch (RocksDBException e) {
                 throw new ProcessorStateException("Error while executing put key " + serdes.keyFrom(rawKey) +
                         " and value " + serdes.keyFrom(rawValue) + " from store " + this.name, e);

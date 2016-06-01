@@ -895,6 +895,10 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
     public boolean needRejoin() {return coordinator.needRejoin();};
 
+    public void markNeedRejoin(boolean rejoinNeeded) {
+        coordinator.markNeedRejoin(rejoinNeeded);
+    }
+
         /**
          * Do one round of polling. In addition to checking for new data, this does any needed
          * heart-beating, auto-commits, and offset updates.

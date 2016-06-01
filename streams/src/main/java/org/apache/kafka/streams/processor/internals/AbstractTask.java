@@ -27,6 +27,9 @@ import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.kafka.streams.processor.TaskId;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
@@ -36,6 +39,8 @@ import java.util.Map;
 import java.util.Set;
 
 public abstract class AbstractTask {
+    private static final Logger log = LoggerFactory.getLogger(AbstractTask.class);
+
     protected final TaskId id;
     protected final String applicationId;
     protected final ProcessorTopology topology;
@@ -77,9 +82,15 @@ public abstract class AbstractTask {
         // set initial offset limits
         initializeOffsetLimits();
 
-        for (StateStoreSupplier stateStoreSupplier : this.topology.stateStoreSuppliers()) {
-            StateStore store = stateStoreSupplier.get();
-            store.init(this.processorContext, store);
+        try {
+            for (StateStoreSupplier stateStoreSupplier : this.topology.stateStoreSuppliers()) {
+                StateStore store = stateStoreSupplier.get();
+                store.init(this.processorContext, store);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("Unexpected ex: {}, closing task", ex.getMessage());
+            close();
+            throw ex;
         }
     }
 

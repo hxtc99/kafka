@@ -195,6 +195,10 @@ public abstract class AbstractCoordinator implements Closeable {
         return rejoinNeeded;
     }
 
+    public void markNeedRejoin(boolean rejoinNeeded) {
+        this.rejoinNeeded = rejoinNeeded;
+    }
+
     /**
      * Ensure that the group is active (i.e. joined and synced)
      */
@@ -224,6 +228,7 @@ public abstract class AbstractCoordinator implements Closeable {
                     // handle join completion in the callback so that the callback will be invoked
                     // even if the consumer is woken up before finishing the rebalance
                     onJoinComplete(generation, memberId, protocol, value);
+                    log.debug("reset needsJoinPrepare");
                     needsJoinPrepare = true;
                     heartbeatTask.reset();
                 }
