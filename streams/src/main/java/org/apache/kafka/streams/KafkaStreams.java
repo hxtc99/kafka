@@ -161,7 +161,7 @@ public class KafkaStreams {
      * @throws IllegalStateException if process has not started yet
      */
     public synchronized void close() {
-        log.debug("Stopping Kafka Stream process");
+        log.info("Stopping Kafka Stream process");
 
         if (state == RUNNING) {
             // signal the threads to stop and wait

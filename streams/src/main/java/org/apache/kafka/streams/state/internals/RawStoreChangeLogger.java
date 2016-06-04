@@ -25,7 +25,7 @@ import java.util.TreeSet;
 
 public class RawStoreChangeLogger extends StoreChangeLogger<byte[], byte[]> {
 
-    private class ByteArrayComparator implements Comparator<byte[]> {
+    public static class ByteArrayComparator implements Comparator<byte[]> {
         @Override
         public int compare(byte[] left, byte[] right) {
             for (int i = 0, j = 0; i < left.length && j < right.length; i++, j++) {

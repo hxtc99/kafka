@@ -19,6 +19,7 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.state.KeyValueIterator;
 
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,10 +29,21 @@ import java.util.TreeSet;
 public class MemoryNavigableLRUCache<K, V> extends MemoryLRUCache<K, V> {
 
     public MemoryNavigableLRUCache(String name, final int maxCacheSize) {
+        this(name, maxCacheSize, null);
+    }
+
+    public MemoryNavigableLRUCache(String name, final int maxCacheSize,
+                                       final Comparator<K> comparator) {
         super();
 
         this.name = name;
-        this.keys = new TreeSet<>();
+
+        if (comparator != null) {
+            this.keys = new TreeSet<>(comparator);
+
+        } else {
+            this.keys = new TreeSet<>();
+        }
 
         // leave room for one extra entry to handle adding an entry before the oldest can be removed
         this.map = new LinkedHashMap<K, V>(maxCacheSize + 1, 1.01f, true) {

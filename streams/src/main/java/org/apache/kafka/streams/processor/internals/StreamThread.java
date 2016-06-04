@@ -268,6 +268,7 @@ public class StreamThread extends Thread {
             // we have caught all Kafka related exceptions, and other runtime exceptions
             // should be due to user application errors
             log.error("Streams application error during processing in thread [" + this.getName() + "]: ", e);
+            System.exit(1);
             throw e;
         } finally {
             shutdown();
@@ -455,7 +456,7 @@ public class StreamThread extends Thread {
 
     private boolean stillRunning() {
         if (!running.get()) {
-            log.debug("Shutting down at user request.");
+            log.warn("Shutting down at user request.");
             return false;
         }
 

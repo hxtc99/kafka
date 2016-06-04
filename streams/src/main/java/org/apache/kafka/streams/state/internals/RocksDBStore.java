@@ -59,17 +59,17 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
     // TODO: these values should be configurable
     private static final int DEFAULT_UNENCODED_CACHE_SIZE = 1000;
     private static final CompressionType COMPRESSION_TYPE = CompressionType.SNAPPY_COMPRESSION;
-    private static final CompactionStyle COMPACTION_STYLE = CompactionStyle.LEVEL;
+    private static final CompactionStyle COMPACTION_STYLE = CompactionStyle.UNIVERSAL;
     private static final long TARGET_FILE_SIZE_BASE = 64 * 1024 * 1024L; // L1 file size
     private static final long MAX_BYTES_FOR_LEVEL_BASE = 1024 * 1024 * 1024L; // L1 Size
     private static final long WRITE_BUFFER_SIZE = 64 * 1024 * 1024L; // memtable size
-    private static final int MIN_WRITE_BUFFER_NUMBER_TO_MERGE = 2; // # of memtable
-    private static final int LEVEL_ZERO_FILE_NUM_COMPACTION_TRIGGER = 8; // L0 size: 64 * 2 * 8
+    private static final int MIN_WRITE_BUFFER_NUMBER_TO_MERGE = 1; // # of memtable to merge
+    private static final int LEVEL_ZERO_FILE_NUM_COMPACTION_TRIGGER = 16; // L0 size: 64 * 1 * 16
     private static final int MAX_WRITE_BUFFERS = 6;
-    private static final long BLOCK_CACHE_SIZE = 1024 * 1024 * 1024L;
+    private static final long BLOCK_CACHE_SIZE = 256 * 1024 * 1024L;
     private static final long BLOCK_SIZE = 4096L;
     private static final int TTL_SECONDS = TTL_NOT_USED;
-    private static final int MAX_BACKGROUND_COMPACTIONS = 4;
+    private static final int MAX_BACKGROUND_COMPACTIONS = 6;
     private static final String DB_FILE_DIR = "rocksdb";
 
     private final String name;
@@ -213,6 +213,10 @@ public class RocksDBStore<K, V> implements KeyValueStore<K, V> {
                 putInternal(key, value);
             }
         });
+    }
+
+    public int cacheSize() {
+        return this.cacheSize;
     }
 
     private RocksDB openDB(File dir, Options options, int ttl) {

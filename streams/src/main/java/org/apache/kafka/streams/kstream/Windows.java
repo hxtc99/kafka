@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class Windows<W extends Window> {
 
-    private static final int DEFAULT_NUM_SEGMENTS = 3;
+    private static final int DEFAULT_NUM_SEGMENTS = 6;
 
     private static final long DEFAULT_EMIT_DURATION = 1000L;
 
