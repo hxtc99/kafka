@@ -74,15 +74,16 @@ class KStreamKStreamJoin<K, R, V1, V2> implements ProcessorSupplier<K, V1> {
             long timeFrom = Math.max(0L, context().timestamp() - joinBeforeMs);
             long timeTo = Math.max(0L, context().timestamp() + joinAfterMs);
 
-            WindowStoreIterator<V2> iter = otherWindow.fetch(key, timeFrom, timeTo);
-            while (iter.hasNext()) {
-                needOuterJoin = false;
-                context().forward(key, joiner.apply(value, iter.next().value));
-            }
+            try (WindowStoreIterator<V2> iter = otherWindow.fetch(key, timeFrom, timeTo)) {
+                while (iter.hasNext()) {
+                    needOuterJoin = false;
+                    context().forward(key, joiner.apply(value, iter.next().value));
+                }
 
-            if (needOuterJoin)
-                context().forward(key, joiner.apply(value, null));
-            iter.close();
+                if (needOuterJoin)
+                    context().forward(key, joiner.apply(value, null));
+                iter.close();
+            }
         }
     }
 
