@@ -46,7 +46,7 @@ public class MemoryNavigableLRUCache<K, V> extends MemoryLRUCache<K, V> {
         }
 
         // leave room for one extra entry to handle adding an entry before the oldest can be removed
-        this.map = new LinkedHashMap<K, V>(maxCacheSize + 1, 1.01f, true) {
+        this.map = new LinkedHashMap<K, V>(100 + 1, 1.01f, true) {
             private static final long serialVersionUID = 1L;
 
             @Override

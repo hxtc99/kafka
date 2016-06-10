@@ -62,7 +62,9 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
 
     private static final long USE_CURRENT_TIMESTAMP = -1L;
 
-    private static final int IN_MEMORY_ENTRIES = 1500 * 1000;
+    private static final int IN_MEMORY_JOIN_ENTRIES = 1500 * 1000;
+    private static final int IN_MEMORY_AGG_ENTRIES = Integer.MAX_VALUE;
+
 
     private enum CompressionStyle {
         NONE,
@@ -282,6 +284,7 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
     private boolean loggingEnabled = false;
     private StoreChangeLogger<byte[], byte[]> changeLogger = null;
     private boolean usingCompression = false;
+    private final int inMemoryEntries;
 
     public RocksDBWindowStore(String name, long retentionPeriod, int numSegments, boolean retainDuplicates, Serde<K> keySerde, Serde<V> valueSerde) {
         this.name = name;
@@ -292,6 +295,7 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
         if (inMemory) {
             usingCompression = true;
         }
+        inMemoryEntries = name.contains("join") ? IN_MEMORY_JOIN_ENTRIES : IN_MEMORY_AGG_ENTRIES;
 
         // The segment interval must be greater than MIN_SEGMENT_INTERVAL
         this.segmentInterval = Math.max(retentionPeriod / (numSegments - 1), MIN_SEGMENT_INTERVAL);
@@ -525,7 +529,7 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
             if (segments[index] == null) {
                 segments[index] = inMemory
                                   ? new InMemorySegment(segmentName(segmentId),
-                                      IN_MEMORY_ENTRIES / 2, segmentId, usingCompression)
+                                      inMemoryEntries / 2, segmentId, usingCompression)
                                   : new RocksDBSegment(segmentName(segmentId), name, segmentId);
                 segments[index].openDB(context);
             }
@@ -551,7 +555,7 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
 
     private void maybeCloseOldest() {
         int size = totalSize();
-        if (!inMemory || size <= IN_MEMORY_ENTRIES) return;
+        if (!inMemory || size <= inMemoryEntries) return;
 
         log.warn("Too many entries: {}, closing oldest segment", size);
 
