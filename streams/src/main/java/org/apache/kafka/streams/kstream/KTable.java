@@ -20,6 +20,8 @@ package org.apache.kafka.streams.kstream;
 import org.apache.kafka.common.annotation.InterfaceStability;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.kstream.internals.Change;
+import org.apache.kafka.streams.processor.ProcessorSupplier;
 import org.apache.kafka.streams.processor.StreamPartitioner;
 
 /**
@@ -357,4 +359,7 @@ public interface KTable<K, V> {
      * @param action An action to perform on each element
      */
     void foreach(ForeachAction<K, V> action);
+
+    void process(ProcessorSupplier<K, Change<V>> processorSupplier, String... stateStoreNames);
+
 }

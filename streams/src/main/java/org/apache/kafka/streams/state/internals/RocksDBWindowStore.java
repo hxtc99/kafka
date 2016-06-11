@@ -39,15 +39,19 @@ import org.xerial.snappy.SnappyOutputStream;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.SimpleTimeZone;
@@ -147,29 +151,126 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
         public void openDB(ProcessorContext context) {super.openDB(context);}
     }
 
-    private static class InMemorySegment extends MemoryNavigableLRUCache<byte[], byte[]>
-        implements Segment {
+    private static class InMemorySegment implements Segment {
 
         private final boolean usingCompression;
+        private final MemoryNavigableLRUCache<ByteArrayWrapper,byte[]> inner;
         public final long id;
+        private final String segmentName;
         private final int maxEntries;
         private int elementsRemoved = 0;
         private int loggingThreashold = 1;
 
-        InMemorySegment(String segmentName, int maxEntries, long id, boolean usingCompression) {
-            super(segmentName, maxEntries, new RawStoreChangeLogger.ByteArrayComparator());
+        public static byte[] fromByteBuffer(ByteBuffer bb) {
+            byte[] b = new byte[bb.remaining()];
+            bb.duplicate().get(b);
+            return b;
+        }
+
+        public static ByteBuffer toByteBuffer(byte[] array) {
+            ByteBuffer buf = ByteBuffer.allocate(array.length);
+            buf.put(array);
+            return buf;
+        }
+
+        public static byte[] fromByteArrayWrapper(ByteArrayWrapper wrapper) {
+            return wrapper.data;
+        }
+
+        public static ByteArrayWrapper toByteArrayWrapper(byte[] array) {
+            return new ByteArrayWrapper(array);
+        }
+
+        public static class ByteArrayWrapper implements Comparable<ByteArrayWrapper> {
+            private final byte[] data;
+
+            public ByteArrayWrapper(byte[] data)
+            {
+                if (data == null)
+                {
+                    throw new NullPointerException();
+                }
+                this.data = Arrays.copyOf(data, data.length);
+            }
+
+            @Override
+            public boolean equals(Object other)
+            {
+                if (!(other instanceof ByteArrayWrapper))
+                {
+                    return false;
+                }
+                return Arrays.equals(data, ((ByteArrayWrapper)other).data);
+            }
+
+            @Override
+            public int hashCode()
+            {
+                return Arrays.hashCode(data);
+            }
+
+            @Override
+            public int compareTo(ByteArrayWrapper o) {
+                return compare(data, o.data);
+            }
+
+            public static int compare(byte[] left, byte[] right) {
+                for (int i = 0, j = 0; i < left.length && j < right.length; i++, j++) {
+                    int a = left[i] & 0xff;
+                    int b = right[j] & 0xff;
+
+                    if (a != b)
+                        return a - b;
+                }
+                return left.length - right.length;
+            }
+
+        }
+
+        public static class ByteArrayIterator<T> implements KeyValueIterator<byte[],T> {
+            private final KeyValueIterator<ByteArrayWrapper,T> inner;
+
+            public ByteArrayIterator(KeyValueIterator<ByteArrayWrapper,T> iter) {
+                inner = iter;
+            }
+
+            @Override
+            public void close() {
+                inner.close();
+            }
+
+            @Override
+            public boolean hasNext() {
+                return inner.hasNext();
+            }
+
+            @Override
+            public KeyValue<byte[], T> next() {
+                KeyValue<ByteArrayWrapper,T> elem = inner.next();
+                return new KeyValue<>(fromByteArrayWrapper(elem.key), elem.value);
+            }
+
+            @Override
+            public void remove() {
+                inner.remove();
+            }
+        }
+
+        InMemorySegment(final String segmentName, int maxEntries, long id, boolean usingCompression) {
+            inner = new MemoryNavigableLRUCache<>(segmentName, maxEntries);
+            this.segmentName = segmentName;
             this.id = id;
             this.maxEntries = maxEntries;
             this.usingCompression = usingCompression;
             log.info("Cache size {} for segment: {}, id: {}, compression: {}",
                 maxEntries, segmentName, id, usingCompression);
-            whenEldestRemoved(
-                new MemoryNavigableLRUCache.EldestEntryRemovalListener<byte[], byte[]>() {
+            inner.whenEldestRemoved(
+                new MemoryNavigableLRUCache.EldestEntryRemovalListener<ByteArrayWrapper, byte[]>() {
                     @Override
-                    public void apply(byte[] key, byte[] value) {
+                    public void apply(ByteArrayWrapper key, byte[] value) {
                         ++elementsRemoved;
                         if (elementsRemoved >= loggingThreashold) {
-                            log.warn("Segment: {}, eldest removal: {}", name, elementsRemoved);
+                            log.warn("Segment: {}, eldest removal: {}", segmentName, elementsRemoved);
                             loggingThreashold *= 2;
                         }
                     }
@@ -179,15 +280,16 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
         public long id() {return id;}
         public void destroy() {
             log.info("Destroy: {}, id: {}", name(), id);
-            keys.clear();
-            map.clear();
+            inner.keys.clear();
+            inner.map.clear();
+            inner.close();
         }
         public void openDB(ProcessorContext context) {}
-        public int cacheSize() {return map.size();}
+        public int cacheSize() {return inner.map.size();}
 
         @Override
         public byte[] get(byte[] key) {
-            byte[] value = super.get(key);
+            byte[] value = inner.get(toByteArrayWrapper(key));
             if (usingCompression) {
                 value = uncompress(value);
             }
@@ -199,9 +301,66 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
             if (usingCompression) {
                 value = compress(value);
             }
-            super.put(key, value);
+            inner.put(toByteArrayWrapper(key), value);
         }
 
+        @Override
+        public byte[] putIfAbsent(byte[] key, byte[] value) {
+            if (usingCompression) {
+                value = compress(value);
+            }
+            return inner.putIfAbsent(toByteArrayWrapper(key), value);
+        }
+
+        @Override
+        public void putAll(List<KeyValue<byte[], byte[]>> entries) {
+            for (KeyValue<byte[],byte[]> entry : entries) {
+                put(entry.key, entry.value);
+            }
+        }
+
+        @Override
+        public byte[] delete(byte[] key) {
+            return inner.delete(toByteArrayWrapper(key));
+        }
+
+        @Override
+        public KeyValueIterator<byte[], byte[]> range(byte[] from, byte[] to) {
+            KeyValueIterator<ByteArrayWrapper,byte[]> iter = inner.range(toByteArrayWrapper(from),
+                toByteArrayWrapper(to));
+            return new ByteArrayIterator<>(iter);
+        }
+
+        @Override
+        public KeyValueIterator<byte[], byte[]> all() {
+            KeyValueIterator<ByteArrayWrapper,byte[]> iter = inner.all();
+            return new ByteArrayIterator<>(iter);
+        }
+
+        @Override
+        public String name() {
+            return inner.name();
+        }
+
+        @Override
+        public void init(ProcessorContext context, StateStore root) {
+            inner.init(context, root);
+        }
+
+        @Override
+        public void flush() {
+            inner.flush();
+        }
+
+        @Override
+        public void close() {
+            inner.close();
+        }
+
+        @Override
+        public boolean persistent() {
+            return inner.persistent();
+        }
     }
 
     private static class RocksDBWindowStoreIterator<V> implements WindowStoreIterator<V> {
@@ -247,6 +406,67 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
 
             return new KeyValue<>(WindowStoreUtils.timestampFromBinaryKey(kv.key),
                                   serdes.valueFrom(kv.value));
+        }
+
+        @Override
+        public void remove() {
+            if (index < iterators.length)
+                iterators[index].remove();
+        }
+
+        @Override
+        public void close() {
+            for (KeyValueIterator<byte[], byte[]> iterator : iterators) {
+                iterator.close();
+            }
+        }
+    }
+
+    public static class RocksDBKeyValueWindowStoreIterator<K,V> implements
+                                                                 Iterator<KeyValue<K, V>>,
+                                                                 Closeable {
+        private final StateSerdes<K, V> serdes;
+        private final KeyValueIterator<byte[], byte[]>[] iterators;
+        private final boolean usingCompression;
+        private int index = 0;
+
+        RocksDBKeyValueWindowStoreIterator(StateSerdes<K, V> serdes, boolean usingCompression) {
+            this(serdes, usingCompression, WindowStoreUtils.NO_ITERATORS);
+        }
+
+        RocksDBKeyValueWindowStoreIterator(StateSerdes<K, V> serdes, boolean usingCompression,
+                                   KeyValueIterator<byte[], byte[]>[] iterators) {
+            this.serdes = serdes;
+            this.iterators = iterators;
+            this.usingCompression = usingCompression;
+        }
+
+        @Override
+        public boolean hasNext() {
+            while (index < iterators.length) {
+                if (iterators[index].hasNext())
+                    return true;
+
+                index++;
+            }
+            return false;
+        }
+
+        /**
+         * @throws NoSuchElementException if no next element exists
+         */
+        @Override
+        public KeyValue<K, V> next() {
+            if (index >= iterators.length)
+                throw new NoSuchElementException();
+
+            KeyValue<byte[], byte[]> kv = iterators[index].next();
+            if (usingCompression) {
+                kv = new KeyValue<>(kv.key, uncompress(kv.value));
+            }
+
+            return new KeyValue<>(WindowStoreUtils.keyFromBinaryKey(kv.key, serdes),
+                serdes.valueFrom(kv.value));
         }
 
         @Override
@@ -515,6 +735,26 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
             return new RocksDBWindowStoreIterator<>(serdes, usingCompression, iterators.toArray(new KeyValueIterator[iterators.size()]));
         } else {
             return new RocksDBWindowStoreIterator<>(serdes, usingCompression);
+        }
+    }
+
+    public RocksDBKeyValueWindowStoreIterator<K,V> all(long timeFrom, long timeTo) {
+        long segFrom = segmentId(timeFrom);
+        long segTo = segmentId(Math.max(0L, timeTo));
+
+        ArrayList<KeyValueIterator<byte[], byte[]>> iterators = new ArrayList<>();
+
+        for (long segmentId = segFrom; segmentId <= segTo; segmentId++) {
+            Segment segment = getSegment(segmentId);
+            if (segment != null)
+                iterators.add(segment.all());
+        }
+
+        if (iterators.size() > 0) {
+            return new RocksDBKeyValueWindowStoreIterator<>(serdes, usingCompression,
+                iterators.toArray(new KeyValueIterator[iterators.size()]));
+        } else {
+            return new RocksDBKeyValueWindowStoreIterator<>(serdes, usingCompression);
         }
     }
 

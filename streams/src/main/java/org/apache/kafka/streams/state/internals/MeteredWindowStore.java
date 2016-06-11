@@ -152,7 +152,7 @@ public class MeteredWindowStore<K, V> implements WindowStore<K, V> {
 
     }
 
-    WindowStore<K, V> inner() {
+    public WindowStore<K, V> inner() {
         return inner;
     }
 }

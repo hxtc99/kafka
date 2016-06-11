@@ -85,6 +85,9 @@ public class KTableImpl<K, S, V> extends AbstractStream<K> implements KTable<K, 
 
     private static final String FOREACH_NAME = "KTABLE-FOREACH-";
 
+    private static final String PROCESSOR_NAME = "KTABLE-PROCESSOR-";
+
+
     public final ProcessorSupplier<?, ?> processorSupplier;
 
     private final Serde<K> keySerde;
@@ -234,12 +237,13 @@ public class KTableImpl<K, S, V> extends AbstractStream<K> implements KTable<K, 
     public KStream<K, V> toStream() {
         String name = topology.newName(TOSTREAM_NAME);
 
-        topology.addProcessor(name, new KStreamMapValues<K, Change<V>, V>(new ValueMapper<Change<V>, V>() {
-            @Override
-            public V apply(Change<V> change) {
-                return change.newValue;
-            }
-        }), this.name);
+        topology.addProcessor(name,
+            new KStreamMapValues<K, Change<V>, V>(new ValueMapper<Change<V>, V>() {
+                @Override
+                public V apply(Change<V> change) {
+                    return change.newValue;
+                }
+            }), this.name);
 
         return new KStreamImpl<>(topology, name, sourceNodes);
     }
@@ -383,29 +387,29 @@ public class KTableImpl<K, S, V> extends AbstractStream<K> implements KTable<K, 
                                        Serde<V> valueSerde,
                                        String name) {
         return this.aggregate(
-                new Initializer<Long>() {
-                    @Override
-                    public Long apply() {
-                        return 0L;
-                    }
-                },
-                new Aggregator<K1, V, Long>() {
-                    @Override
-                    public Long apply(K1 aggKey, V value, Long aggregate) {
-                        return aggregate + 1L;
-                    }
-                }, new Aggregator<K1, V, Long>() {
-                    @Override
-                    public Long apply(K1 aggKey, V value, Long aggregate) {
-                        return aggregate - 1L;
-                    }
-                }, new KeyValueMapper<K, V, KeyValue<K1, V>>() {
-                    @Override
-                    public KeyValue<K1, V> apply(K key, V value) {
-                        return new KeyValue<>(selector.apply(key, value), value);
-                    }
-                },
-                keySerde, valueSerde, Serdes.Long(), name);
+            new Initializer<Long>() {
+                @Override
+                public Long apply() {
+                    return 0L;
+                }
+            },
+            new Aggregator<K1, V, Long>() {
+                @Override
+                public Long apply(K1 aggKey, V value, Long aggregate) {
+                    return aggregate + 1L;
+                }
+            }, new Aggregator<K1, V, Long>() {
+                @Override
+                public Long apply(K1 aggKey, V value, Long aggregate) {
+                    return aggregate - 1L;
+                }
+            }, new KeyValueMapper<K, V, KeyValue<K1, V>>() {
+                @Override
+                public KeyValue<K1, V> apply(K key, V value) {
+                    return new KeyValue<>(selector.apply(key, value), value);
+                }
+            },
+            keySerde, valueSerde, Serdes.Long(), name);
     }
 
     @Override
@@ -513,4 +517,13 @@ public class KTableImpl<K, S, V> extends AbstractStream<K> implements KTable<K, 
             }
         }
     }
+
+    @Override
+    public void process(final ProcessorSupplier<K, Change<V>> processorSupplier, String... stateStoreNames) {
+        String name = topology.newName(PROCESSOR_NAME);
+
+        topology.addProcessor(name, processorSupplier, this.name);
+        topology.connectProcessorAndStateStores(name, stateStoreNames);
+    }
+
 }

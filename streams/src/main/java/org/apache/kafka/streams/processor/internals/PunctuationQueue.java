@@ -42,7 +42,9 @@ public class PunctuationQueue {
             while (top != null && top.timestamp <= timestamp) {
                 PunctuationSchedule sched = top;
                 pq.poll();
-                punctuator.punctuate(sched.node(), timestamp);
+                if (!punctuated) {
+                    punctuator.punctuate(sched.node(), timestamp);
+                }
                 pq.add(sched.next(timestamp));
                 punctuated = true;
 
