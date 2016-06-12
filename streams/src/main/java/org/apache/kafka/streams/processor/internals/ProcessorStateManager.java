@@ -22,6 +22,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.ProcessorStateException;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.processor.StateRestoreCallback;
@@ -69,6 +70,7 @@ public class ProcessorStateManager {
     private final boolean isStandby;
     private final Map<String, StateRestoreCallback> restoreCallbacks; // used for standby tasks, keyed by state topic name
     private Consumer<byte[], byte[]> consumer;
+    private final boolean inMemory;
 
     /**
      * @throws IOException if any error happens while creating or locking the state directory
@@ -90,19 +92,31 @@ public class ProcessorStateManager {
         this.offsetLimits = new HashMap<>();
 
         // create the state directory for this task if missing (we won't create the parent directory)
+
         createStateDirectory(baseDir);
 
         // try to acquire the exclusive lock on the state directory
         directoryLock = lockStateDirectory(baseDir, 30 * 1000L);
         if (directoryLock == null) {
-            throw new IOException("Failed to lock the state directory: " + baseDir.getCanonicalPath());
+            throw new IOException(
+                "Failed to lock the state directory: " + baseDir.getCanonicalPath());
         }
         log.info("Acquired file lock: {}", baseDir.getCanonicalPath());
 
-        // load the checkpoint information
-        OffsetCheckpoint checkpoint = new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
-        this.checkpointedOffsets = new HashMap<>(checkpoint.read());
-        this.restoredOffsets.putAll(checkpointedOffsets);
+        StreamsConfig config = StreamsConfig.SINGLETON;
+        inMemory = config.getBoolean(StreamsConfig.STATE_IN_MEMORY_CONFIG);
+        log.info("In Memory: {}", inMemory);
+        if (inMemory) {
+            this.checkpointedOffsets = new HashMap<>();
+            this.restoredOffsets.putAll(checkpointedOffsets);
+        } else {
+            // load the checkpoint information
+            OffsetCheckpoint
+                checkpoint =
+                new OffsetCheckpoint(new File(this.baseDir, CHECKPOINT_FILE_NAME));
+            this.checkpointedOffsets = new HashMap<>(checkpoint.read());
+            this.restoredOffsets.putAll(checkpointedOffsets);
+        }
     }
 
     public void setConsumer(Consumer<byte[], byte[]> consumer) {

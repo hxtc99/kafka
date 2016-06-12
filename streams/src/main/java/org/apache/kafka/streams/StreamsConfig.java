@@ -47,6 +47,9 @@ public class StreamsConfig extends AbstractConfig {
     public static final String STATE_DIR_CONFIG = "state.dir";
     private static final String STATE_DIR_DOC = "Directory location for state store.";
 
+    public static final String STATE_IN_MEMORY_CONFIG = "state.in.memory";
+    private static final String STATE_IN_MEMORY_DOC = "Whether it's in-memory store.";
+
     /** <code>zookeeper.connect<code/> */
     public static final String ZOOKEEPER_CONNECT_CONFIG = "zookeeper.connect";
     private static final String ZOOKEEPER_CONNECT_DOC = "Zookeeper connect string for Kafka topics management.";
@@ -114,6 +117,8 @@ public class StreamsConfig extends AbstractConfig {
     /** <code>client.id</code> */
     public static final String CLIENT_ID_CONFIG = CommonClientConfigs.CLIENT_ID_CONFIG;
 
+    public static StreamsConfig SINGLETON;
+
     static {
         CONFIG = new ConfigDef().define(APPLICATION_ID_CONFIG,      // required with no default value
                                         Type.STRING,
@@ -138,6 +143,11 @@ public class StreamsConfig extends AbstractConfig {
                                         "/tmp/kafka-streams",
                                         Importance.MEDIUM,
                                         STATE_DIR_DOC)
+                                .define(STATE_IN_MEMORY_CONFIG,
+                                        Type.BOOLEAN,
+                                        Boolean.FALSE,
+                                        Importance.LOW,
+                                        STATE_IN_MEMORY_DOC)
                                 .define(REPLICATION_FACTOR_CONFIG,
                                         Type.INT,
                                         1,
@@ -218,6 +228,7 @@ public class StreamsConfig extends AbstractConfig {
 
     public StreamsConfig(Map<?, ?> props) {
         super(CONFIG, props);
+        SINGLETON = this;
     }
 
     public Map<String, Object> getConsumerConfigs(StreamThread streamThread, String groupId, String clientId) {
@@ -284,6 +295,7 @@ public class StreamsConfig extends AbstractConfig {
     private void removeStreamsSpecificConfigs(Map<String, Object> props) {
         props.remove(StreamsConfig.POLL_MS_CONFIG);
         props.remove(StreamsConfig.STATE_DIR_CONFIG);
+        props.remove(StreamsConfig.STATE_IN_MEMORY_CONFIG);
         props.remove(StreamsConfig.APPLICATION_ID_CONFIG);
         props.remove(StreamsConfig.KEY_SERDE_CLASS_CONFIG);
         props.remove(StreamsConfig.VALUE_SERDE_CLASS_CONFIG);

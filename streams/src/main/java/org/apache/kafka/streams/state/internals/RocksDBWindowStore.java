@@ -22,6 +22,7 @@ package org.apache.kafka.streams.state.internals;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateRestoreCallback;
 import org.apache.kafka.streams.processor.StateStore;
@@ -511,7 +512,8 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
         this.retentionPeriod = retentionPeriod;
         this.numSegments = numSegments;
 
-        this.inMemory = name.contains("in-memory");
+        StreamsConfig config = StreamsConfig.SINGLETON;
+        inMemory = config.getBoolean(StreamsConfig.STATE_IN_MEMORY_CONFIG);
         if (inMemory) {
             usingCompression = true;
         }
