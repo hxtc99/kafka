@@ -50,7 +50,10 @@ public class StreamsConfig extends AbstractConfig {
     public static final String STATE_IN_MEMORY_CONFIG = "state.in.memory";
     private static final String STATE_IN_MEMORY_DOC = "Whether it's in-memory store.";
 
-    /** <code>zookeeper.connect<code/> */
+    public static final String STATE_RESTORE_DISABLED_CONFIG = "state.restore.disabled";
+    private static final String STATE_RESTORE_DISABLED_DOC = "Whether disable restoring the state.";
+
+  /** <code>zookeeper.connect<code/> */
     public static final String ZOOKEEPER_CONNECT_CONFIG = "zookeeper.connect";
     private static final String ZOOKEEPER_CONNECT_DOC = "Zookeeper connect string for Kafka topics management.";
 
@@ -124,10 +127,11 @@ public class StreamsConfig extends AbstractConfig {
                                         Type.STRING,
                                         Importance.HIGH,
                                         StreamsConfig.APPLICATION_ID_DOC)
-                                .define(BOOTSTRAP_SERVERS_CONFIG,       // required with no default value
-                                        Type.STRING,
-                                        Importance.HIGH,
-                                        CommonClientConfigs.BOOSTRAP_SERVERS_DOC)
+                                .define(BOOTSTRAP_SERVERS_CONFIG,
+                                    // required with no default value
+                                    Type.STRING,
+                                    Importance.HIGH,
+                                    CommonClientConfigs.BOOSTRAP_SERVERS_DOC)
                                 .define(CLIENT_ID_CONFIG,
                                         Type.STRING,
                                         "",
@@ -148,11 +152,16 @@ public class StreamsConfig extends AbstractConfig {
                                         Boolean.FALSE,
                                         Importance.LOW,
                                         STATE_IN_MEMORY_DOC)
+                                .define(STATE_RESTORE_DISABLED_CONFIG,
+                                    Type.BOOLEAN,
+                                    Boolean.FALSE,
+                                    Importance.LOW,
+                                    STATE_RESTORE_DISABLED_DOC)
                                 .define(REPLICATION_FACTOR_CONFIG,
-                                        Type.INT,
-                                        1,
-                                        Importance.MEDIUM,
-                                        REPLICATION_FACTOR_DOC)
+                                    Type.INT,
+                                    1,
+                                    Importance.MEDIUM,
+                                    REPLICATION_FACTOR_DOC)
                                 .define(TIMESTAMP_EXTRACTOR_CLASS_CONFIG,
                                         Type.CLASS,
                                         ConsumerRecordTimestampExtractor.class.getName(),
@@ -296,6 +305,7 @@ public class StreamsConfig extends AbstractConfig {
         props.remove(StreamsConfig.POLL_MS_CONFIG);
         props.remove(StreamsConfig.STATE_DIR_CONFIG);
         props.remove(StreamsConfig.STATE_IN_MEMORY_CONFIG);
+        props.remove(StreamsConfig.STATE_RESTORE_DISABLED_CONFIG);
         props.remove(StreamsConfig.APPLICATION_ID_CONFIG);
         props.remove(StreamsConfig.KEY_SERDE_CLASS_CONFIG);
         props.remove(StreamsConfig.VALUE_SERDE_CLASS_CONFIG);

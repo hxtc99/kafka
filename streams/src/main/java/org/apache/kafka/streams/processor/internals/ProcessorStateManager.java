@@ -71,6 +71,7 @@ public class ProcessorStateManager {
     private final Map<String, StateRestoreCallback> restoreCallbacks; // used for standby tasks, keyed by state topic name
     private Consumer<byte[], byte[]> consumer;
     private final boolean inMemory;
+    private final boolean disableStateRestore;
 
     /**
      * @throws IOException if any error happens while creating or locking the state directory
@@ -105,7 +106,8 @@ public class ProcessorStateManager {
 
         StreamsConfig config = StreamsConfig.SINGLETON;
         inMemory = config.getBoolean(StreamsConfig.STATE_IN_MEMORY_CONFIG);
-        log.info("In Memory: {}", inMemory);
+        disableStateRestore = config.getBoolean(StreamsConfig.STATE_RESTORE_DISABLED_CONFIG);
+        log.info("In Memory: {}, disable state restore: {}", inMemory, disableStateRestore);
         if (inMemory) {
             this.checkpointedOffsets = new HashMap<>();
             this.restoredOffsets.putAll(checkpointedOffsets);
@@ -223,7 +225,11 @@ public class ProcessorStateManager {
             if (store.persistent())
                 restoreCallbacks.put(topic, stateRestoreCallback);
         } else {
-            restoreActiveState(topic, stateRestoreCallback);
+            if (disableStateRestore) {
+                log.info("Disable restoring the state.");
+            } else {
+                restoreActiveState(topic, stateRestoreCallback);
+            }
         }
     }
 
