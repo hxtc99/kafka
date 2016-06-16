@@ -34,7 +34,7 @@ public class StoreChangeLogger<K, V> {
     }
 
     // TODO: these values should be configurable
-    protected static final int DEFAULT_WRITE_BATCH_SIZE = 100;
+    protected static final int DEFAULT_WRITE_BATCH_SIZE = 1024;
 
     protected final StateSerdes<K, V> serialization;
 

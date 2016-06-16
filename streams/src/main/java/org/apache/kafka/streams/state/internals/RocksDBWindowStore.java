@@ -97,6 +97,7 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
     }
 
     private static byte[] compress(byte[] value) {
+        if (value == null) return null;
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream(value.length);
             OutputStream gos = getCompressedOutputStream(bos);
@@ -111,6 +112,7 @@ public class RocksDBWindowStore<K, V> implements WindowStore<K, V> {
     }
 
     private static final byte[] uncompress(byte[] value) {
+        if (value == null) return null;
         int bufSize = value.length * 4;
         byte[] bytes = new byte[bufSize];
         try {
